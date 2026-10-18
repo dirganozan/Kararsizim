@@ -920,3 +920,133 @@ a:hover {
 .poll-card.just-voted {
   animation: voteGlow 0.3s ease-out;
 }
+
+/* ==========================================================================
+   FAZ 4: UI/UX POLISHING, MICRO-INTERACTIONS & RESPONSIVE POLISH
+   ========================================================================== */
+
+/* Custom Sleek Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Shimmer Highlight on Progress Fill */
+.poll-progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.35) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: translateX(-100%);
+  animation: progressShimmer 2.2s infinite;
+}
+
+@keyframes progressShimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Polished Empty State */
+.phase-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.phase-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+/* Enhanced Responsive Styles */
+@media (max-width: 640px) {
+  .container {
+    padding: 0 14px;
+  }
+
+  .navbar {
+    padding: 10px 0;
+  }
+
+  .brand-logo {
+    font-size: 1.15rem;
+  }
+
+  .brand-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 1rem;
+    border-radius: 10px;
+  }
+
+  .nav-links {
+    gap: 8px;
+  }
+
+  .nav-links .btn {
+    padding: 8px 12px;
+    font-size: 0.825rem;
+  }
+
+  .user-chip {
+    padding: 4px 10px;
+    font-size: 0.825rem;
+  }
+
+  .poll-card {
+    padding: 18px 16px;
+    border-radius: var(--radius-md);
+  }
+
+  .poll-question {
+    font-size: 1.125rem;
+    margin-bottom: 14px;
+  }
+
+  .poll-option-btn {
+    padding: 12px 14px;
+    font-size: 0.9rem;
+  }
+
+  .poll-progress-content {
+    padding: 11px 14px;
+    font-size: 0.875rem;
+  }
+
+  .modal-dialog {
+    padding: 24px 18px;
+    border-radius: var(--radius-lg);
+  }
+
+  .modal-title {
+    font-size: 1.2rem;
+  }
+}
+
+@media (max-width: 400px) {
+  .brand-logo span:not(.brand-icon) {
+    display: none;
+  }
+  .user-chip span.username-text {
+    display: none;
+  }
+}
