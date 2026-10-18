@@ -350,3 +350,108 @@ class PollVoteApiTest(TestCase):
         # Should contain progress bar class and voted badge
         self.assertContains(response, 'poll-result-row')
         self.assertContains(response, 'Senin Oyun')
+
+
+class PollExpirationAndAuthorActionsTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.author = User.objects.create_user(
+            username='pollauthor2',
+            email='author2@example.com',
+            password='password123'
+        )
+        self.other_user = User.objects.create_user(
+            username='stranger',
+            email='stranger@example.com',
+            password='password123'
+        )
+        self.poll = Poll.objects.create(
+            author=self.author,
+            question='Hangi kahveyi içmeliyim?'
+        )
+        self.opt1 = Option.objects.create(poll=self.poll, text='Türk Kahvesi')
+        self.opt2 = Option.objects.create(poll=self.poll, text='Filtre Kahve')
+
+    def test_poll_duration_calculation_on_create(self):
+        self.client.login(username='pollauthor2', password='password123')
+        # Create with 1h duration
+        response = self.client.post(reverse('poll_create'), {
+            'question': '1 saatlik acil anket sorusu?',
+            'options': ['Evet', 'Hayır'],
+            'duration': '1h',
+        }, follow=True)
+        self.assertEqual(response.status_code, 200)
+        p1 = Poll.objects.get(question='1 saatlik acil anket sorusu?')
+        self.assertIsNotNone(p1.expires_at)
+        self.assertFalse(p1.is_closed)
+
+        # Create with 'never' duration
+        response = self.client.post(reverse('poll_create'), {
+            'question': 'Süresiz açık kalacak soru?',
+            'options': ['A', 'B'],
+            'duration': 'never',
+        }, follow=True)
+        self.assertEqual(response.status_code, 200)
+        p2 = Poll.objects.get(question='Süresiz açık kalacak soru?')
+        self.assertIsNone(p2.expires_at)
+
+    def test_poll_auto_close_when_expired(self):
+        from django.utils import timezone
+        from datetime import timedelta
+
+        # Set expiration in the past
+        self.poll.expires_at = timezone.now() - timedelta(minutes=5)
+        self.poll.save()
+        self.assertTrue(self.poll.is_closed)
+
+        # Voting on expired poll must fail
+        url = reverse('poll_vote_api', kwargs={'poll_id': self.poll.id})
+        response = self.client.post(
+            url,
+            data=json.dumps({'option_id': self.opt1.id}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertFalse(data.get('success'))
+        self.assertIn('kapatılmıştır', data.get('error'))
+
+    def test_author_can_toggle_poll_status(self):
+        self.client.login(username='pollauthor2', password='password123')
+        url = reverse('poll_toggle_status', kwargs={'poll_id': self.poll.id})
+        
+        # Close poll
+        response = self.client.post(url, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        self.poll.refresh_from_db()
+        self.assertFalse(self.poll.is_active)
+        self.assertTrue(self.poll.is_closed)
+
+        # Reopen poll
+        response = self.client.post(url, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        self.poll.refresh_from_db()
+        self.assertTrue(self.poll.is_active)
+
+    def test_non_author_cannot_toggle_poll_status(self):
+        self.client.login(username='stranger', password='password123')
+        url = reverse('poll_toggle_status', kwargs={'poll_id': self.poll.id})
+        response = self.client.post(url, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 403)
+        self.poll.refresh_from_db()
+        self.assertTrue(self.poll.is_active)
+
+    def test_author_can_delete_poll(self):
+        self.client.login(username='pollauthor2', password='password123')
+        url = reverse('poll_delete', kwargs={'poll_id': self.poll.id})
+        response = self.client.post(url, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Poll.objects.filter(id=self.poll.id).exists())
+        self.assertFalse(Option.objects.filter(poll_id=self.poll.id).exists())
+
+    def test_non_author_cannot_delete_poll(self):
+        self.client.login(username='stranger', password='password123')
+        url = reverse('poll_delete', kwargs={'poll_id': self.poll.id})
+        response = self.client.post(url, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(Poll.objects.filter(id=self.poll.id).exists())

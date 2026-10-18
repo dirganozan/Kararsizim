@@ -392,3 +392,81 @@ document.addEventListener('DOMContentLoaded', () => {
         modalErrors.style.display = 'block';
     }
 });
+
+// ==========================================================================
+// AUTHOR ACTIONS: TOGGLE STATUS & DELETE POLL
+// ==========================================================================
+
+async function handleTogglePollStatus(pollId) {
+    if (!pollId) return;
+
+    const btn = document.getElementById(`toggle-btn-${pollId}`);
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'İşleniyor...';
+    }
+
+    try {
+        const response = await fetch(`/polls/${pollId}/toggle-status/`, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': getCsrfToken()
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            showToast(data.message, 'success');
+            setTimeout(() => {
+                window.location.reload();
+            }, 400);
+        } else {
+            showToast(data.error || 'İşlem gerçekleştirilemedi.', 'error');
+            if (btn) btn.disabled = false;
+        }
+    } catch (err) {
+        console.error('Anket durumu değiştirme hatası:', err);
+        showToast('Bağlantı hatası oluştu.', 'error');
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function handleDeletePoll(pollId) {
+    if (!pollId) return;
+
+    const confirmed = confirm('Bu anketi ve kullanılan tüm oyları kalıcı olarak silmek istediğinize emin misiniz?');
+    if (!confirmed) return;
+
+    const card = document.getElementById(`poll-card-${pollId}`);
+
+    try {
+        const response = await fetch(`/polls/${pollId}/delete/`, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': getCsrfToken()
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            showToast(data.message, 'info');
+            if (card) {
+                card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                card.style.opacity = '0';
+                card.style.transform = 'scale(0.95)';
+                setTimeout(() => card.remove(), 300);
+            } else {
+                window.location.reload();
+            }
+        } else {
+            showToast(data.error || 'Silme işlemi gerçekleştirilemedi.', 'error');
+        }
+    } catch (err) {
+        console.error('Anket silme hatası:', err);
+        showToast('Bağlantı hatası oluştu.', 'error');
+    }
+}

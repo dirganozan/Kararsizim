@@ -123,6 +123,23 @@
                     </button>
                 </div>
 
+                <!-- Duration Selection -->
+                <div class="form-group" style="margin-top: 16px;">
+                    <label for="modalDurationInput" class="form-label">
+                        ⏱️ Oylama Süresi
+                    </label>
+                    <select name="duration" id="modalDurationInput" class="form-input" style="cursor: pointer;">
+                        <option value="24h" selected>📅 24 Saat (1 Gün - Varsayılan)</option>
+                        <option value="1h">⏱️ 1 Saat</option>
+                        <option value="6h">⏱️ 6 Saat</option>
+                        <option value="12h">⏱️ 12 Saat</option>
+                        <option value="3d">📅 3 Gün</option>
+                        <option value="7d">📅 7 Gün (1 Hafta)</option>
+                        <option value="never">♾️ Süresiz (Ben kapatana kadar açık)</option>
+                    </select>
+                    <span class="form-help">Süre dolduğunda anket otomatik olarak oylamaya kapanır.</span>
+                </div>
+
                 <div class="modal-footer" style="margin-top: 24px; display: flex; gap: 12px;">
                     <button type="button" class="btn btn-outline" id="cancelModalBtn" style="flex: 1;">Vazgeç</button>
                     <button type="submit" id="submitModalBtn" class="btn btn-primary" style="flex: 2;">

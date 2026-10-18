@@ -1,12 +1,14 @@
 import json
+from datetime import timedelta
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.http import JsonResponse, HttpResponseBadRequest
+from django.http import JsonResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.views.decorators.http import require_POST
 from django.db import transaction
 from django.db.models import F
+from django.utils import timezone
 from .models import Poll, Option, VoteLog
 from .forms import RegisterForm, LoginForm, PollCreateForm
 
@@ -16,6 +18,7 @@ def index_view(request):
     Main home page view.
     Lists all polls in chronological order (newest first).
     Prefetches options and author, and calculates whether current user or guest has already voted.
+    Shows final results if poll is closed.
     """
     polls = Poll.objects.prefetch_related('options', 'author').all()
     poll_form = PollCreateForm() if request.user.is_authenticated else None
@@ -34,6 +37,8 @@ def index_view(request):
     for poll in polls:
         voted_option_id = user_votes.get(poll.id)
         has_voted = (voted_option_id is not None)
+        is_closed = poll.is_closed
+        show_results = has_voted or is_closed
         total = poll.total_votes
 
         options_list = []
@@ -49,6 +54,9 @@ def index_view(request):
         poll_data.append({
             'poll': poll,
             'has_voted': has_voted,
+            'is_closed': is_closed,
+            'show_results': show_results,
+            'status_label': poll.status_label,
             'voted_option_id': voted_option_id,
             'total_votes': total,
             'options': options_list,
@@ -123,7 +131,7 @@ def poll_create_view(request):
     Poll creation view.
     Accessible only by logged-in users (@login_required).
     Validates question and options (strictly 2 to 5 options).
-    Supports both standard form submission and AJAX modal submission.
+    Calculates expires_at according to selected duration.
     """
     is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
 
@@ -159,6 +167,25 @@ def poll_create_view(request):
         if not errors:
             poll = form.save(commit=False)
             poll.author = request.user
+
+            # Calculate expiration time based on duration choice
+            duration = request.POST.get('duration', '24h')
+            now = timezone.now()
+            if duration == '1h':
+                poll.expires_at = now + timedelta(hours=1)
+            elif duration == '6h':
+                poll.expires_at = now + timedelta(hours=6)
+            elif duration == '12h':
+                poll.expires_at = now + timedelta(hours=12)
+            elif duration == '24h':
+                poll.expires_at = now + timedelta(hours=24)
+            elif duration == '3d':
+                poll.expires_at = now + timedelta(days=3)
+            elif duration == '7d':
+                poll.expires_at = now + timedelta(days=7)
+            else:
+                poll.expires_at = None  # 'never'
+
             poll.save()
             for opt_text in options:
                 Option.objects.create(poll=poll, text=opt_text)
@@ -197,9 +224,16 @@ def poll_create_view(request):
 def poll_vote_api(request, poll_id):
     """
     JSON voting endpoint for both members and anonymous visitors.
-    Prevents duplicate votes using request.user (for members) or session_key (for guests).
+    Prevents duplicate votes and blocks voting if poll is closed.
     """
     poll = get_object_or_404(Poll, id=poll_id)
+
+    # Check if poll is closed
+    if poll.is_closed:
+        return JsonResponse({
+            'success': False,
+            'error': 'Bu anket oylamaya kapatılmıştır. Yeni oy kullanılamaz.'
+        }, status=400)
 
     # Parse option_id from JSON body or form-data
     option_id = None
@@ -273,3 +307,65 @@ def poll_vote_api(request, poll_id):
         'user_voted_option_id': option.id,
         'options': options_data,
     })
+
+
+@login_required
+@require_POST
+def poll_toggle_status_view(request, poll_id):
+    """
+    Allows the poll author to toggle active/closed state of their poll.
+    """
+    poll = get_object_or_404(Poll, id=poll_id)
+
+    if poll.author != request.user:
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'error': 'Yalnızca anket sahibi bu işlemi yapabilir.'}, status=403)
+        messages.error(request, 'Bu anketi kapatma yetkiniz yok.')
+        return redirect('index')
+
+    poll.is_active = not poll.is_active
+    poll.save(update_fields=['is_active'])
+
+    status_msg = "Anket yeniden oylamaya açıldı." if poll.is_active else "Anket oylamaya kapatıldı."
+
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        return JsonResponse({
+            'success': True,
+            'is_active': poll.is_active,
+            'is_closed': poll.is_closed,
+            'status_label': poll.status_label,
+            'message': status_msg
+        })
+
+    messages.success(request, status_msg)
+    return redirect('index')
+
+
+@login_required
+@require_POST
+def poll_delete_view(request, poll_id):
+    """
+    Allows the poll author to delete their poll permanently.
+    """
+    poll = get_object_or_404(Poll, id=poll_id)
+
+    if poll.author != request.user:
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'error': 'Yalnızca anket sahibi anketi silebilir.'}, status=403)
+        messages.error(request, 'Bu anketi silme yetkiniz yok.')
+        return redirect('index')
+
+    question_preview = poll.question[:40]
+    poll.delete()
+
+    success_msg = f'"{question_preview}..." anketi başarıyla silindi.'
+
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        return JsonResponse({
+            'success': True,
+            'message': success_msg,
+            'poll_id': poll_id
+        })
+
+    messages.success(request, success_msg)
+    return redirect('index')

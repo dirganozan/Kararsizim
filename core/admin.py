@@ -19,8 +19,8 @@ class OptionInline(admin.TabularInline):
 
 @admin.register(Poll)
 class PollAdmin(admin.ModelAdmin):
-    list_display = ('question', 'author', 'total_votes', 'created_at')
-    list_filter = ('created_at', 'author')
+    list_display = ('question', 'author', 'total_votes', 'is_active', 'expires_at', 'created_at')
+    list_filter = ('is_active', 'created_at', 'author')
     search_fields = ('question', 'author__username')
     inlines = [OptionInline]
 

@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 
 
 class User(AbstractUser):
@@ -26,6 +27,7 @@ class User(AbstractUser):
 class Poll(models.Model):
     """
     Poll model representing a decision dilemma.
+    Supports auto-expiration and manual closure by author.
     """
     author = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -34,6 +36,8 @@ class Poll(models.Model):
         verbose_name='Yazar'
     )
     question = models.CharField('Soru', max_length=255)
+    is_active = models.BooleanField('Aktif mi?', default=True)
+    expires_at = models.DateTimeField('Bitiş Tarihi', null=True, blank=True)
     created_at = models.DateTimeField('Oluşturulma Tarihi', auto_now_add=True)
 
     class Meta:
@@ -47,6 +51,40 @@ class Poll(models.Model):
     @property
     def total_votes(self):
         return sum(option.vote_count for option in self.options.all())
+
+    @property
+    def is_closed(self):
+        """
+        Poll is closed if author deactivated it OR expiration time has passed.
+        """
+        if not self.is_active:
+            return True
+        if self.expires_at and timezone.now() >= self.expires_at:
+            return True
+        return False
+
+    @property
+    def status_label(self):
+        """
+        Human-readable remaining time or closed status.
+        """
+        if not self.is_active:
+            return "Oylama Kapandı (Yazar kapattı)"
+        if self.expires_at:
+            now = timezone.now()
+            if now >= self.expires_at:
+                return "Oylama Kapandı (Süre doldu)"
+            diff = self.expires_at - now
+            hours = int(diff.total_seconds() // 3600)
+            minutes = int((diff.total_seconds() % 3600) // 60)
+            if hours >= 24:
+                days = hours // 24
+                return f"⏳ {days} gün kaldı"
+            elif hours > 0:
+                return f"⏳ {hours}s {minutes}dk kaldı"
+            else:
+                return f"⏳ {max(1, minutes)}dk kaldı"
+        return "⚡ Oylamaya açık (Süresiz)"
 
 
 class Option(models.Model):

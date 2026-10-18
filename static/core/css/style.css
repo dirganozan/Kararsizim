@@ -1050,3 +1050,81 @@ a:hover {
     display: none;
   }
 }
+
+/* ==========================================================================
+   AUTHOR ACTIONS & POLL EXPIRATION STYLES
+   ========================================================================== */
+
+.author-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-author-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  border: 1px solid var(--border-color);
+  background: #FFFFFF;
+  line-height: 1.2;
+}
+
+.btn-author-action:hover {
+  transform: translateY(-1px);
+}
+
+.btn-action-close {
+  color: var(--text-muted);
+  background: var(--bg-card-subtle);
+}
+
+.btn-action-close:hover {
+  background: #E2E8F0;
+  color: var(--text-main);
+}
+
+.btn-action-open {
+  color: #065F46;
+  background: #ECFDF5;
+  border-color: #A7F3D0;
+}
+
+.btn-action-open:hover {
+  background: #D1FAE5;
+}
+
+.btn-action-delete {
+  color: #E11D48;
+  background: #FFF1F2;
+  border-color: #FECDD3;
+}
+
+.btn-action-delete:hover {
+  background: #FFE4E6;
+  border-color: #FDA4AF;
+}
+
+.closed-notice {
+  background: #FFFBEB;
+  color: #92400E;
+  border: 1px solid #FDE68A;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.poll-card.poll-closed {
+  border-left: 4px solid var(--accent-rose);
+}

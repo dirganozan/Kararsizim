@@ -43,16 +43,40 @@
 
     {% if poll_data %}
         {% for item in poll_data %}
-            <article class="poll-card" id="poll-card-{{ item.poll.id }}" data-poll-id="{{ item.poll.id }}">
-                <!-- Meta: Author & Date -->
+            <article class="poll-card {% if item.is_closed %}poll-closed{% endif %}" id="poll-card-{{ item.poll.id }}" data-poll-id="{{ item.poll.id }}">
+                <!-- Meta: Author, Date & Author Actions -->
                 <div class="poll-meta">
-                    <span class="poll-author">
-                        <span class="user-avatar" style="width: 24px; height: 24px; font-size: 0.75rem;">
-                            {{ item.poll.author.username|make_list|first|upper }}
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="poll-author">
+                            <span class="user-avatar" style="width: 24px; height: 24px; font-size: 0.75rem;">
+                                {{ item.poll.author.username|make_list|first|upper }}
+                            </span>
+                            @{{ item.poll.author.username }}
                         </span>
-                        @{{ item.poll.author.username }}
-                    </span>
-                    <span class="poll-date">{{ item.poll.created_at|timesince }} önce</span>
+                        <span class="poll-date">• {{ item.poll.created_at|timesince }} önce</span>
+                    </div>
+
+                    <!-- Yazar Aksiyonları (Kapat/Aç, Sil) -->
+                    {% if user.is_authenticated and user == item.poll.author %}
+                        <div class="author-actions">
+                            <button type="button" 
+                                    class="btn-author-action {% if item.poll.is_active and not item.is_closed %}btn-action-close{% else %}btn-action-open{% endif %}" 
+                                    id="toggle-btn-{{ item.poll.id }}"
+                                    data-poll-id="{{ item.poll.id }}" 
+                                    data-is-active="{% if item.poll.is_active and not item.is_closed %}true{% else %}false{% endif %}"
+                                    title="{% if item.poll.is_active and not item.is_closed %}Oylamayı Kapat{% else %}Yeniden Oylamaya Aç{% endif %}"
+                                    onclick="handleTogglePollStatus({{ item.poll.id }})">
+                                {% if item.poll.is_active and not item.is_closed %}🔒 Kapat{% else %}🔓 Aç{% endif %}
+                            </button>
+                            <button type="button" 
+                                    class="btn-author-action btn-action-delete" 
+                                    data-poll-id="{{ item.poll.id }}" 
+                                    title="Anketi Sil"
+                                    onclick="handleDeletePoll({{ item.poll.id }})">
+                                🗑️ Sil
+                            </button>
+                        </div>
+                    {% endif %}
                 </div>
 
                 <!-- Question -->
@@ -60,8 +84,14 @@
 
                 <!-- Options / Results Container -->
                 <div class="poll-options-wrapper" id="poll-options-{{ item.poll.id }}">
-                    {% if item.has_voted %}
-                        <!-- ALREADY VOTED: PROGRESS BARS -->
+                    {% if item.show_results %}
+                        <!-- SHOW RESULTS (VOTED OR CLOSED) -->
+                        {% if item.is_closed and not item.has_voted %}
+                            <div class="closed-notice">
+                                🔒 Bu anket oylamaya kapatılmıştır. Nihai sonuçlar gösterilmektedir.
+                            </div>
+                        {% endif %}
+
                         {% for opt in item.options %}
                             <div class="poll-result-row {% if opt.is_selected %}selected-by-user{% endif %}">
                                 <div class="poll-progress-fill {% cycle 'color-opt-0' 'color-opt-1' 'color-opt-2' 'color-opt-3' 'color-opt-4' %}" style="width: {{ opt.percentage }}%;"></div>
@@ -80,7 +110,7 @@
                             </div>
                         {% endfor %}
                     {% else %}
-                        <!-- NOT VOTED YET: INTERACTIVE BUTTONS -->
+                        <!-- NOT VOTED YET & OPEN: INTERACTIVE BUTTONS -->
                         <div class="poll-options" style="display: flex; flex-direction: column; gap: 10px;">
                             {% for opt in item.options %}
                                 <button type="button" 
@@ -101,8 +131,8 @@
                     <span id="poll-total-votes-{{ item.poll.id }}">
                         🗳️ Toplam <strong class="total-votes-number">{{ item.total_votes }}</strong> oy
                     </span>
-                    <span class="poll-status-badge" id="poll-status-{{ item.poll.id }}" style="font-weight: 600; font-size: 0.8rem; color: {% if item.has_voted %}var(--accent-green){% else %}var(--primary){% endif %};">
-                        {% if item.has_voted %}✅ Oy kullandın{% else %}⚡ Oyunu kullan{% endif %}
+                    <span class="poll-status-badge" id="poll-status-{{ item.poll.id }}" style="font-weight: 600; font-size: 0.8rem; color: {% if item.is_closed %}var(--accent-rose){% elif item.has_voted %}var(--accent-green){% else %}var(--primary){% endif %};">
+                        {{ item.status_label }}
                     </span>
                 </div>
             </article>

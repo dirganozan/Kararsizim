@@ -68,6 +68,16 @@ class LoginForm(AuthenticationForm):
 
 
 class PollCreateForm(forms.ModelForm):
+    DURATION_CHOICES = [
+        ('never', '♾️ Süresiz (Ben kapatana kadar)'),
+        ('1h', '⏱️ 1 Saat'),
+        ('6h', '⏱️ 6 Saat'),
+        ('12h', '⏱️ 12 Saat'),
+        ('24h', '📅 24 Saat (1 Gün - Varsayılan)'),
+        ('3d', '📅 3 Gün'),
+        ('7d', '📅 7 Gün (1 Hafta)'),
+    ]
+
     question = forms.CharField(
         label='Kararsız kaldığın soru nedir?',
         max_length=255,
@@ -83,6 +93,17 @@ class PollCreateForm(forms.ModelForm):
             'min_length': 'Soru metni en az 5 karakter olmalıdır.',
             'max_length': 'Soru metni en fazla 255 karakter olabilir.'
         }
+    )
+
+    duration = forms.ChoiceField(
+        label='Oylama Süresi',
+        choices=DURATION_CHOICES,
+        initial='24h',
+        required=False,
+        widget=forms.Select(attrs={
+            'class': 'form-input',
+            'style': 'cursor: pointer;'
+        })
     )
 
     class Meta:
