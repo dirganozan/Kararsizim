@@ -173,13 +173,6 @@ async function handleVoteClick(btn) {
         const data = await response.json();
 
         if (response.ok && data.success) {
-            // Save vote in localStorage as extra client-side guard
-            try {
-                localStorage.setItem(`krarsizim_voted_${pollId}`, optionId);
-            } catch (e) {
-                // Ignore storage quota or disabled issues
-            }
-
             if (card) {
                 card.classList.add('just-voted');
                 setTimeout(() => card.classList.remove('just-voted'), 500);
@@ -264,33 +257,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 5000);
     });
 
-    // 1.1 LocalStorage Client-Side Guard (Sync past votes from this browser)
-    document.querySelectorAll('.poll-card').forEach(card => {
-        const pollId = card.dataset.pollId;
-        if (!pollId) return;
-        const votedOptionId = localStorage.getItem(`krarsizim_voted_${pollId}`);
-        if (votedOptionId) {
-            const buttons = card.querySelectorAll('.poll-option-btn');
-            if (buttons.length > 0) {
-                buttons.forEach(b => {
-                    if (b.dataset.optionId == votedOptionId) {
-                        b.style.borderColor = 'var(--primary)';
-                        b.style.background = 'var(--primary-light)';
-                        const ind = b.querySelector('.vote-indicator');
-                        if (ind) ind.textContent = '✓';
-                    }
-                    b.disabled = true;
-                    b.style.opacity = '0.75';
-                    b.title = 'Bu cihazdan daha önce oy kullandınız.';
-                });
-                const statusBadge = document.getElementById(`poll-status-${pollId}`);
-                if (statusBadge) {
-                    statusBadge.textContent = '✅ Önceden oy kullanıldı';
-                    statusBadge.style.color = 'var(--accent-green)';
-                }
+    // 1.1 Clear legacy client-side localStorage vote locks so they never interfere with user accounts
+    try {
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('krarsizim_voted_')) {
+                keysToRemove.push(key);
             }
         }
-    });
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+    } catch (e) {
+        // Ignore if storage is inaccessible
+    }
 
     // 2. Modal Management
     const modal = document.getElementById('createPollModal');

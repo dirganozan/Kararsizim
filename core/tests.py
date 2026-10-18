@@ -508,3 +508,77 @@ class PollExpirationAndAuthorActionsTest(TestCase):
         self.opt2.refresh_from_db()
         self.assertEqual(self.opt1.vote_count, 1)
         self.assertEqual(self.opt2.vote_count, 0)
+
+    def test_newly_registered_user_can_vote_on_existing_polls(self):
+        # 1. Existing vote from another user
+        User.objects.create_user(username='first_user', email='first@example.com', password='password123')
+        VoteLog.objects.create(poll=self.poll, option=self.opt1, voter_token='device_token_xyz')
+        self.opt1.vote_count = 1
+        self.opt1.save()
+
+        # 2. A brand new user registers on a client that has device_token_xyz cookie
+        client = Client()
+        client.cookies['krarsizim_voter_token'] = 'device_token_xyz'
+        reg_resp = client.post(reverse('register'), {
+            'username': 'fresh_user',
+            'email': 'fresh@example.com',
+            'password1': 'mypassword123',
+            'password2': 'mypassword123',
+        }, follow=True)
+        self.assertEqual(reg_resp.status_code, 200)
+
+        # 3. Check home page: new user must NOT see this poll as already voted
+        index_resp = client.get(reverse('index'))
+        self.assertEqual(index_resp.status_code, 200)
+        found_poll = None
+        for item in index_resp.context['poll_data']:
+            if item['poll'].id == self.poll.id:
+                found_poll = item
+                break
+        self.assertIsNotNone(found_poll)
+        self.assertFalse(found_poll['has_voted'])
+
+        # 4. New user votes on the poll
+        vote_url = reverse('poll_vote_api', kwargs={'poll_id': self.poll.id})
+        vote_resp = client.post(
+            vote_url,
+            data=json.dumps({'option_id': self.opt2.id}),
+            content_type='application/json'
+        )
+        self.assertEqual(vote_resp.status_code, 200)
+        self.assertTrue(vote_resp.json().get('success'))
+
+        self.opt2.refresh_from_db()
+        self.assertEqual(self.opt2.vote_count, 1)
+
+    def test_multiple_users_on_same_device_can_each_vote(self):
+        client = Client()
+        client.cookies['krarsizim_voter_token'] = 'shared_device_token'
+
+        # User 1 registers and votes
+        client.post(reverse('register'), {
+            'username': 'device_user1',
+            'email': 'du1@example.com',
+            'password1': 'password123',
+            'password2': 'password123',
+        })
+        vote_url = reverse('poll_vote_api', kwargs={'poll_id': self.poll.id})
+        resp1 = client.post(vote_url, data=json.dumps({'option_id': self.opt1.id}), content_type='application/json')
+        self.assertEqual(resp1.status_code, 200)
+
+        # User 1 logs out
+        client.get(reverse('logout'))
+
+        # User 2 logs in on the SAME device
+        User.objects.create_user(username='device_user2', email='du2@example.com', password='password123')
+        client.post(reverse('login'), {'username': 'device_user2', 'password': 'password123'})
+
+        # User 2 CAN vote on the same poll
+        resp2 = client.post(vote_url, data=json.dumps({'option_id': self.opt2.id}), content_type='application/json')
+        self.assertEqual(resp2.status_code, 200)
+        self.assertTrue(resp2.json().get('success'))
+
+        # But User 2 cannot vote a SECOND time
+        resp3 = client.post(vote_url, data=json.dumps({'option_id': self.opt2.id}), content_type='application/json')
+        self.assertEqual(resp3.status_code, 400)
+

@@ -33,19 +33,11 @@ def get_or_create_voter_token(request):
 def migrate_anonymous_votes(request, user):
     """
     When an anonymous visitor registers or logs in, link their past anonymous votes
-    to their newly authenticated user account so they cannot vote again.
+    from the current session to their newly authenticated user account.
     """
-    voter_token = request.COOKIES.get(COOKIE_VOTER_TOKEN_NAME)
     old_session_key = request.session.session_key
-
-    q = Q()
-    if voter_token:
-        q |= Q(voter_token=voter_token)
     if old_session_key:
-        q |= Q(session_key=old_session_key)
-
-    if q:
-        VoteLog.objects.filter(q, user__isnull=True).update(user=user)
+        VoteLog.objects.filter(session_key=old_session_key, user__isnull=True).update(user=user)
 
 
 def index_view(request):
@@ -53,20 +45,19 @@ def index_view(request):
     Main home page view.
     Lists all polls in chronological order (newest first).
     Prefetches options and author, and calculates whether current user or guest has already voted.
-    Uses multi-layer check (User, permanent voter token cookie, and session key).
+    Uses user-specific lookup for authenticated users, and device/session lookup for guests.
     """
     polls = Poll.objects.prefetch_related('options', 'author').all()
     poll_form = PollCreateForm() if request.user.is_authenticated else None
     voter_token, is_new_cookie = get_or_create_voter_token(request)
     session_key = request.session.session_key
 
-    # Multi-layer lookup for existing votes
+    # Lookup existing votes
     if request.user.is_authenticated:
-        q = Q(user=request.user)
-        if voter_token:
-            q |= Q(voter_token=voter_token)
-        logs = VoteLog.objects.filter(q).values_list('poll_id', 'option_id')
+        # Authenticated users are tracked strictly by their user account
+        logs = VoteLog.objects.filter(user=request.user).values_list('poll_id', 'option_id')
     else:
+        # Anonymous visitors are tracked by permanent device token cookie and session key
         q = Q()
         if voter_token:
             q |= Q(voter_token=voter_token)
@@ -316,11 +307,9 @@ def poll_vote_api(request, poll_id):
         request.session.save()
         session_key = request.session.session_key
 
-    # Check for duplicate vote using all available identifiers
+    # Check for duplicate vote using user account for members, or token/session for guests
     if user:
-        already_voted = VoteLog.objects.filter(poll=poll).filter(
-            Q(user=user) | Q(voter_token=voter_token)
-        ).exists()
+        already_voted = VoteLog.objects.filter(poll=poll, user=user).exists()
     else:
         q = Q(voter_token=voter_token)
         if session_key:
