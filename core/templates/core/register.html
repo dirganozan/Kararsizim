@@ -1,0 +1,98 @@
+{% extends 'core/base.html' %}
+
+{% block content %}
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-header">
+            <h1 class="auth-title">Aramıza Katıl 🚀</h1>
+            <p class="auth-subtitle">Hesabını oluştur, aklındaki soruları topluluğa sor!</p>
+        </div>
+
+        {% if form.non_field_errors %}
+            <div class="alert alert-error" style="margin-bottom: 20px;">
+                {% for error in form.non_field_errors %}
+                    <p>{{ error }}</p>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <form method="post" novalidate>
+            {% csrf_token %}
+
+            <!-- Username -->
+            <div class="form-group">
+                <label for="{{ form.username.id_for_label }}" class="form-label">
+                    Kullanıcı Adı
+                </label>
+                {{ form.username }}
+                {% if form.username.errors %}
+                    <div class="form-error">
+                        {% for error in form.username.errors %}
+                            <p>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <span class="form-help">Profilinde ve anketlerinde diğer kullanıcılar bunu görür.</span>
+                {% endif %}
+            </div>
+
+            <!-- Email -->
+            <div class="form-group">
+                <label for="{{ form.email.id_for_label }}" class="form-label">
+                    E-posta Adresi
+                </label>
+                {{ form.email }}
+                {% if form.email.errors %}
+                    <div class="form-error">
+                        {% for error in form.email.errors %}
+                            <p>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <span class="form-help">🔒 E-posta adresin asla kimseyle paylaşılmaz.</span>
+                {% endif %}
+            </div>
+
+            <!-- Password 1 -->
+            <div class="form-group">
+                <label for="{{ form.password1.id_for_label }}" class="form-label">
+                    Şifre
+                </label>
+                {{ form.password1 }}
+                {% if form.password1.errors %}
+                    <div class="form-error">
+                        {% for error in form.password1.errors %}
+                            <p>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <span class="form-help">En az 6 karakter içermelidir.</span>
+                {% endif %}
+            </div>
+
+            <!-- Password 2 -->
+            <div class="form-group">
+                <label for="{{ form.password2.id_for_label }}" class="form-label">
+                    Şifre Tekrar
+                </label>
+                {{ form.password2 }}
+                {% if form.password2.errors %}
+                    <div class="form-error">
+                        {% for error in form.password2.errors %}
+                            <p>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block" style="padding: 13px; font-size: 1rem; margin-top: 10px;">
+                Kayıt Ol ve Başla
+            </button>
+        </form>
+
+        <div class="auth-footer">
+            Zaten bir hesabın var mı? <a href="{% url 'login' %}">Giriş Yap</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

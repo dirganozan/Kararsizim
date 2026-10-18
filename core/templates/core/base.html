@@ -1,0 +1,84 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if page_title %}{{ page_title }} | {% endif %}Krarsızım - Karar Verme Platformu</title>
+    
+    <!-- Google Fonts: Plus Jakarta Sans -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{% static 'core/css/style.css' %}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+
+    <!-- NAVBAR -->
+    <header class="navbar">
+        <div class="container nav-container">
+            <a href="{% url 'index' %}" class="brand-logo" aria-label="Krarsızım Ana Sayfa">
+                <span class="brand-icon">🤔</span>
+                <span>Krarsızım</span>
+            </a>
+
+            <nav class="nav-links">
+                {% if user.is_authenticated %}
+                    <div class="user-chip" title="Giriş yapıldı">
+                        <span class="user-avatar">{{ user.username|make_list|first|upper }}</span>
+                        <span class="username-text">@{{ user.username }}</span>
+                    </div>
+                    <a href="{% url 'logout' %}" class="btn btn-outline" style="padding: 8px 14px; font-size: 0.875rem;">
+                        Çıkış Yap
+                    </a>
+                {% else %}
+                    <a href="{% url 'login' %}" class="btn btn-ghost">
+                        Giriş Yap
+                    </a>
+                    <a href="{% url 'register' %}" class="btn btn-primary">
+                        Kayıt Ol
+                    </a>
+                {% endif %}
+            </nav>
+        </div>
+    </header>
+
+    <!-- MAIN BODY -->
+    <main class="main-content">
+        <div class="container">
+            <!-- FLASH MESSAGES -->
+            {% if messages %}
+                <div class="messages-wrapper">
+                    {% for message in messages %}
+                        <div class="alert {% if message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %}">
+                            <span>
+                                {% if 'success' in message.tags %}✨
+                                {% elif 'error' in message.tags %}⚠️
+                                {% else %}ℹ️{% endif %}
+                            </span>
+                            <div>{{ message }}</div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            {% block content %}
+            {% endblock %}
+        </div>
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+        <div class="container">
+            <p>© 2026 <strong>Krarsızım</strong> • Kararsız kaldığın her şeyde topluluk seninle!</p>
+        </div>
+    </footer>
+
+    <!-- Client JS -->
+    <script src="{% static 'core/js/main.js' %}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

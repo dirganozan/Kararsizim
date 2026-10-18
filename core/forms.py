@@ -1,0 +1,67 @@
+from django import forms
+from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
+from .models import User
+
+
+class RegisterForm(UserCreationForm):
+    email = forms.EmailField(
+        label='E-posta',
+        required=True,
+        widget=forms.EmailInput(attrs={
+            'class': 'form-input',
+            'placeholder': 'ornek@email.com',
+            'autocomplete': 'email'
+        })
+    )
+
+    class Meta(UserCreationForm.Meta):
+        model = User
+        fields = ('username', 'email')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['username'].widget.attrs.update({
+            'class': 'form-input',
+            'placeholder': 'kullanici_adiniz',
+            'autocomplete': 'username'
+        })
+        self.fields['username'].help_text = 'Harf, rakam ve @/./+/-/_ karakterleri içerebilir.'
+        
+        if 'password1' in self.fields:
+            self.fields['password1'].widget.attrs.update({
+                'class': 'form-input',
+                'placeholder': '••••••••',
+                'autocomplete': 'new-password'
+            })
+        if 'password2' in self.fields:
+            self.fields['password2'].widget.attrs.update({
+                'class': 'form-input',
+                'placeholder': '••••••••',
+                'autocomplete': 'new-password'
+            })
+
+    def clean_email(self):
+        email = self.cleaned_data.get('email', '').strip().lower()
+        if User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError('Bu e-posta adresi ile zaten kayıtlı bir hesap var.')
+        return email
+
+
+class LoginForm(AuthenticationForm):
+    username = forms.CharField(
+        label='Kullanıcı Adı',
+        widget=forms.TextInput(attrs={
+            'class': 'form-input',
+            'placeholder': 'kullanici_adiniz',
+            'autocomplete': 'username',
+            'autofocus': True
+        })
+    )
+    password = forms.CharField(
+        label='Şifre',
+        widget=forms.PasswordInput(attrs={
+            'class': 'form-input',
+            'placeholder': '••••••••',
+            'autocomplete': 'current-password'
+        })
+    )
