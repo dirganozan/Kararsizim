@@ -1,3 +1,4 @@
+import json
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth import get_user_model
@@ -197,3 +198,155 @@ class PollCreateViewTest(TestCase):
         data = response.json()
         self.assertTrue(data.get('success'))
         self.assertIn('poll_id', data)
+
+
+class PollVoteApiTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.author = User.objects.create_user(
+            username='pollmaker',
+            email='maker@example.com',
+            password='makerpassword123'
+        )
+        self.voter_user = User.objects.create_user(
+            username='voter',
+            email='voter@example.com',
+            password='voterpassword123'
+        )
+        self.poll = Poll.objects.create(
+            author=self.author,
+            question='Hangi rengi seversin?'
+        )
+        self.opt_blue = Option.objects.create(poll=self.poll, text='Mavi', vote_count=0)
+        self.opt_red = Option.objects.create(poll=self.poll, text='Kırmızı', vote_count=0)
+
+    def test_authenticated_user_vote_success(self):
+        self.client.login(username='voter', password='voterpassword123')
+        url = reverse('poll_vote_api', kwargs={'poll_id': self.poll.id})
+        response = self.client.post(
+            url,
+            data=json.dumps({'option_id': self.opt_blue.id}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data.get('success'))
+        self.assertEqual(data.get('total_votes'), 1)
+        self.assertEqual(data.get('user_voted_option_id'), self.opt_blue.id)
+
+        # Check DB
+        self.opt_blue.refresh_from_db()
+        self.assertEqual(self.opt_blue.vote_count, 1)
+        self.assertTrue(VoteLog.objects.filter(poll=self.poll, user=self.voter_user, option=self.opt_blue).exists())
+
+    def test_authenticated_user_duplicate_vote_fails(self):
+        self.client.login(username='voter', password='voterpassword123')
+        url = reverse('poll_vote_api', kwargs={'poll_id': self.poll.id})
+        # First vote
+        self.client.post(
+            url,
+            data=json.dumps({'option_id': self.opt_blue.id}),
+            content_type='application/json'
+        )
+        # Second vote
+        response = self.client.post(
+            url,
+            data=json.dumps({'option_id': self.opt_red.id}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertFalse(data.get('success'))
+        self.assertIn('zaten oy kullandınız', data.get('error'))
+
+        # Check vote counts remained 1
+        self.opt_blue.refresh_from_db()
+        self.opt_red.refresh_from_db()
+        self.assertEqual(self.opt_blue.vote_count, 1)
+        self.assertEqual(self.opt_red.vote_count, 0)
+
+    def test_anonymous_guest_vote_success(self):
+        guest_client = Client()
+        url = reverse('poll_vote_api', kwargs={'poll_id': self.poll.id})
+        response = guest_client.post(
+            url,
+            data=json.dumps({'option_id': self.opt_red.id}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data.get('success'))
+        self.assertEqual(data.get('total_votes'), 1)
+
+        self.opt_red.refresh_from_db()
+        self.assertEqual(self.opt_red.vote_count, 1)
+        self.assertTrue(VoteLog.objects.filter(poll=self.poll, user=None, option=self.opt_red).exists())
+
+    def test_anonymous_guest_duplicate_vote_fails(self):
+        guest_client = Client()
+        url = reverse('poll_vote_api', kwargs={'poll_id': self.poll.id})
+        # 1st vote
+        guest_client.post(
+            url,
+            data=json.dumps({'option_id': self.opt_red.id}),
+            content_type='application/json'
+        )
+        # 2nd vote with same guest session
+        response = guest_client.post(
+            url,
+            data=json.dumps({'option_id': self.opt_blue.id}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertFalse(data.get('success'))
+        self.assertIn('zaten oy kullandınız', data.get('error'))
+
+    def test_vote_invalid_option(self):
+        url = reverse('poll_vote_api', kwargs={'poll_id': self.poll.id})
+        response = self.client.post(
+            url,
+            data=json.dumps({'option_id': 999999}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertFalse(data.get('success'))
+
+    def test_vote_option_from_another_poll(self):
+        another_poll = Poll.objects.create(author=self.author, question='Başka bir soru?')
+        other_opt = Option.objects.create(poll=another_poll, text='Alakasız Seçenek')
+
+        url = reverse('poll_vote_api', kwargs={'poll_id': self.poll.id})
+        response = self.client.post(
+            url,
+            data=json.dumps({'option_id': other_opt.id}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_vote_via_form_data(self):
+        url = reverse('poll_vote_api', kwargs={'poll_id': self.poll.id})
+        response = self.client.post(url, {'option_id': str(self.opt_blue.id)})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data.get('success'))
+        self.opt_blue.refresh_from_db()
+        self.assertEqual(self.opt_blue.vote_count, 1)
+
+    def test_index_shows_voted_poll_with_results(self):
+        self.client.login(username='voter', password='voterpassword123')
+        # Vote on poll
+        VoteLog.objects.create(
+            poll=self.poll,
+            option=self.opt_blue,
+            user=self.voter_user
+        )
+        self.opt_blue.vote_count = 1
+        self.opt_blue.save()
+
+        response = self.client.get(reverse('index'))
+        self.assertEqual(response.status_code, 200)
+        # Should contain progress bar class and voted badge
+        self.assertContains(response, 'poll-result-row')
+        self.assertContains(response, 'Senin Oyun')

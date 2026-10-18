@@ -1,8 +1,12 @@
+import json
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseBadRequest
+from django.views.decorators.http import require_POST
+from django.db import transaction
+from django.db.models import F
 from .models import Poll, Option, VoteLog
 from .forms import RegisterForm, LoginForm, PollCreateForm
 
@@ -10,14 +14,49 @@ from .forms import RegisterForm, LoginForm, PollCreateForm
 def index_view(request):
     """
     Main home page view.
-    Lists polls in chronological order (newest first).
+    Lists all polls in chronological order (newest first).
+    Prefetches options and author, and calculates whether current user or guest has already voted.
     """
     polls = Poll.objects.prefetch_related('options', 'author').all()
     poll_form = PollCreateForm() if request.user.is_authenticated else None
 
+    # Determine user's existing votes (poll_id -> option_id)
+    user_votes = {}
+    if request.user.is_authenticated:
+        logs = VoteLog.objects.filter(user=request.user).values_list('poll_id', 'option_id')
+        user_votes = dict(logs)
+    elif request.session.session_key:
+        logs = VoteLog.objects.filter(session_key=request.session.session_key).values_list('poll_id', 'option_id')
+        user_votes = dict(logs)
+
+    # Prepare poll items with vote state and percentages
+    poll_data = []
+    for poll in polls:
+        voted_option_id = user_votes.get(poll.id)
+        has_voted = (voted_option_id is not None)
+        total = poll.total_votes
+
+        options_list = []
+        for opt in poll.options.all():
+            options_list.append({
+                'id': opt.id,
+                'text': opt.text,
+                'vote_count': opt.vote_count,
+                'percentage': opt.get_percentage(total),
+                'is_selected': (opt.id == voted_option_id),
+            })
+
+        poll_data.append({
+            'poll': poll,
+            'has_voted': has_voted,
+            'voted_option_id': voted_option_id,
+            'total_votes': total,
+            'options': options_list,
+        })
+
     context = {
         'page_title': 'Ana Sayfa - Kararsız kaldığın her şey burada!',
-        'polls': polls,
+        'poll_data': poll_data,
         'poll_form': poll_form,
     }
     return render(request, 'core/index.html', context)
@@ -151,4 +190,86 @@ def poll_create_view(request):
         'form': form,
         'page_title': 'Yeni Anket Oluştur',
         'initial_options': options
+    })
+
+
+@require_POST
+def poll_vote_api(request, poll_id):
+    """
+    JSON voting endpoint for both members and anonymous visitors.
+    Prevents duplicate votes using request.user (for members) or session_key (for guests).
+    """
+    poll = get_object_or_404(Poll, id=poll_id)
+
+    # Parse option_id from JSON body or form-data
+    option_id = None
+    if request.content_type == 'application/json':
+        try:
+            body = json.loads(request.body)
+            option_id = body.get('option_id')
+        except (ValueError, TypeError):
+            return JsonResponse({'success': False, 'error': 'Geçersiz veri formatı.'}, status=400)
+    else:
+        option_id = request.POST.get('option_id')
+
+    if not option_id:
+        return JsonResponse({'success': False, 'error': 'Lütfen oy vermek istediğiniz seçeneği belirtin.'}, status=400)
+
+    try:
+        option = poll.options.get(id=int(option_id))
+    except (Option.DoesNotExist, ValueError):
+        return JsonResponse({'success': False, 'error': 'Geçersiz seçenek seçildi.'}, status=400)
+
+    # Identify voter
+    user = request.user if request.user.is_authenticated else None
+    session_key = None
+
+    if not user:
+        if not request.session.session_key:
+            request.session.save()
+        session_key = request.session.session_key
+
+    # Check for duplicate vote
+    if user:
+        already_voted = VoteLog.objects.filter(poll=poll, user=user).exists()
+    else:
+        already_voted = VoteLog.objects.filter(poll=poll, session_key=session_key).exists()
+
+    if already_voted:
+        return JsonResponse({
+            'success': False,
+            'error': 'Bu ankete zaten oy kullandınız.'
+        }, status=400)
+
+    # Atomically increment vote count and log the vote
+    with transaction.atomic():
+        Option.objects.filter(id=option.id).update(vote_count=F('vote_count') + 1)
+        VoteLog.objects.create(
+            poll=poll,
+            option=option,
+            user=user,
+            session_key=session_key
+        )
+
+    # Refresh options to return updated percentages and counts
+    options = poll.options.all()
+    total_votes = sum(o.vote_count for o in options)
+    options_data = []
+    for opt in options:
+        pct = round((opt.vote_count / total_votes) * 100, 1) if total_votes > 0 else 0
+        options_data.append({
+            'id': opt.id,
+            'text': opt.text,
+            'vote_count': opt.vote_count,
+            'percentage': pct,
+            'is_selected': (opt.id == option.id),
+        })
+
+    return JsonResponse({
+        'success': True,
+        'message': 'Oyunuz başarıyla kaydedildi!',
+        'poll_id': poll.id,
+        'total_votes': total_votes,
+        'user_voted_option_id': option.id,
+        'options': options_data,
     })

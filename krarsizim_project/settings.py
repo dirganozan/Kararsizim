@@ -3,6 +3,7 @@ Django settings for krarsizim_project project.
 """
 
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 import dj_database_url
@@ -66,22 +67,31 @@ TEMPLATES = [
 WSGI_APPLICATION = 'krarsizim_project.wsgi.application'
 
 # Database
-DATABASE_URL = os.getenv('DATABASE_URL')
-if DATABASE_URL and DATABASE_URL.strip():
-    DATABASES = {
-        'default': dj_database_url.config(
-            default=DATABASE_URL,
-            conn_max_age=600,
-            conn_health_checks=True,
-        )
-    }
-else:
+# If running unit tests, use in-memory SQLite for speed and isolation
+if 'test' in sys.argv:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
+            'NAME': ':memory:',
         }
     }
+else:
+    DATABASE_URL = os.getenv('DATABASE_URL')
+    if DATABASE_URL and DATABASE_URL.strip():
+        DATABASES = {
+            'default': dj_database_url.config(
+                default=DATABASE_URL,
+                conn_max_age=600,
+                conn_health_checks=True,
+            )
+        }
+    else:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
+        }
 
 # Custom User Model
 AUTH_USER_MODEL = 'core.User'

@@ -32,44 +32,78 @@
 
 <!-- ANKET AKIŞI (POLL FEED) -->
 <section class="poll-feed">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <h2 style="font-size: 1.35rem; font-weight: 800; color: var(--text-main);">
             🔥 Güncel Anketler
         </h2>
         <span style="font-size: 0.875rem; color: var(--text-muted); font-weight: 600;">
-            {{ polls|length }} Anket
+            {{ poll_data|length }} Anket
         </span>
     </div>
 
-    {% if polls %}
-        {% for poll in polls %}
-            <article class="poll-card" id="poll-card-{{ poll.id }}">
+    {% if poll_data %}
+        {% for item in poll_data %}
+            <article class="poll-card" id="poll-card-{{ item.poll.id }}" data-poll-id="{{ item.poll.id }}">
+                <!-- Meta: Author & Date -->
                 <div class="poll-meta">
                     <span class="poll-author">
-                        <span class="user-avatar" style="width: 22px; height: 22px; font-size: 0.7rem;">
-                            {{ poll.author.username|make_list|first|upper }}
+                        <span class="user-avatar" style="width: 24px; height: 24px; font-size: 0.75rem;">
+                            {{ item.poll.author.username|make_list|first|upper }}
                         </span>
-                        @{{ poll.author.username }}
+                        @{{ item.poll.author.username }}
                     </span>
-                    <span class="poll-date">{{ poll.created_at|timesince }} önce</span>
+                    <span class="poll-date">{{ item.poll.created_at|timesince }} önce</span>
                 </div>
 
-                <h3 class="poll-question">{{ poll.question }}</h3>
+                <!-- Question -->
+                <h3 class="poll-question">{{ item.poll.question }}</h3>
 
-                <div class="poll-options">
-                    {% for option in poll.options.all %}
-                        <div class="poll-option-btn">
-                            <span>{{ option.text }}</span>
-                            <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 700;">
-                                {{ option.vote_count }} oy
-                            </span>
+                <!-- Options / Results Container -->
+                <div class="poll-options-wrapper" id="poll-options-{{ item.poll.id }}">
+                    {% if item.has_voted %}
+                        <!-- ALREADY VOTED: PROGRESS BARS -->
+                        {% for opt in item.options %}
+                            <div class="poll-result-row {% if opt.is_selected %}selected-by-user{% endif %}">
+                                <div class="poll-progress-fill {% cycle 'color-opt-0' 'color-opt-1' 'color-opt-2' 'color-opt-3' 'color-opt-4' %}" style="width: {{ opt.percentage }}%;"></div>
+                                <div class="poll-progress-content">
+                                    <span class="poll-option-label">
+                                        {{ opt.text }}
+                                        {% if opt.is_selected %}
+                                            <span class="voted-badge">✓ Senin Oyun</span>
+                                        {% endif %}
+                                    </span>
+                                    <span class="poll-percentage">
+                                        %{{ opt.percentage }}
+                                        <span class="poll-vote-count">({{ opt.vote_count }} oy)</span>
+                                    </span>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <!-- NOT VOTED YET: INTERACTIVE BUTTONS -->
+                        <div class="poll-options" style="display: flex; flex-direction: column; gap: 10px;">
+                            {% for opt in item.options %}
+                                <button type="button" 
+                                        class="poll-option-btn" 
+                                        data-poll-id="{{ item.poll.id }}" 
+                                        data-option-id="{{ opt.id }}"
+                                        onclick="handleVoteClick(this)">
+                                    <span>{{ opt.text }}</span>
+                                    <span class="vote-indicator">✓</span>
+                                </button>
+                            {% endfor %}
                         </div>
-                    {% endfor %}
+                    {% endif %}
                 </div>
 
-                <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; font-size: 0.825rem; color: var(--text-muted);">
-                    <span>🗳️ Toplam <strong>{{ poll.total_votes }}</strong> oy</span>
-                    <span style="color: var(--primary); font-weight: 600;">Faz 3'te canlı oylama aktifleşecek ⚡</span>
+                <!-- Card Footer -->
+                <div class="poll-footer-meta" style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: var(--text-muted);">
+                    <span id="poll-total-votes-{{ item.poll.id }}">
+                        🗳️ Toplam <strong class="total-votes-number">{{ item.total_votes }}</strong> oy
+                    </span>
+                    <span class="poll-status-badge" id="poll-status-{{ item.poll.id }}" style="font-weight: 600; font-size: 0.8rem; color: {% if item.has_voted %}var(--accent-green){% else %}var(--primary){% endif %};">
+                        {% if item.has_voted %}✅ Oy kullandın{% else %}⚡ Oyunu kullan{% endif %}
+                    </span>
                 </div>
             </article>
         {% endfor %}

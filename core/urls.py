@@ -7,4 +7,5 @@ urlpatterns = [
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
     path('polls/create/', views.poll_create_view, name='poll_create'),
+    path('api/poll/<int:poll_id>/vote/', views.poll_vote_api, name='poll_vote_api'),
 ]
