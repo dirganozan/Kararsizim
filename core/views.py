@@ -1,4 +1,5 @@
 import json
+import uuid
 from datetime import timedelta
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, logout, authenticate
@@ -7,10 +8,44 @@ from django.contrib import messages
 from django.http import JsonResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.views.decorators.http import require_POST
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import timezone
 from .models import Poll, Option, VoteLog
 from .forms import RegisterForm, LoginForm, PollCreateForm
+
+COOKIE_VOTER_TOKEN_NAME = 'krarsizim_voter_token'
+COOKIE_MAX_AGE = 365 * 24 * 3600  # 1 year
+
+
+def get_or_create_voter_token(request):
+    """
+    Retrieves or generates a permanent device/browser voter token.
+    Prevents duplicate votes even after logging out or session clearing.
+    """
+    token = request.COOKIES.get(COOKIE_VOTER_TOKEN_NAME)
+    is_new = False
+    if not token or len(token) < 16:
+        token = uuid.uuid4().hex
+        is_new = True
+    return token, is_new
+
+
+def migrate_anonymous_votes(request, user):
+    """
+    When an anonymous visitor registers or logs in, link their past anonymous votes
+    to their newly authenticated user account so they cannot vote again.
+    """
+    voter_token = request.COOKIES.get(COOKIE_VOTER_TOKEN_NAME)
+    old_session_key = request.session.session_key
+
+    q = Q()
+    if voter_token:
+        q |= Q(voter_token=voter_token)
+    if old_session_key:
+        q |= Q(session_key=old_session_key)
+
+    if q:
+        VoteLog.objects.filter(q, user__isnull=True).update(user=user)
 
 
 def index_view(request):
@@ -18,19 +53,28 @@ def index_view(request):
     Main home page view.
     Lists all polls in chronological order (newest first).
     Prefetches options and author, and calculates whether current user or guest has already voted.
-    Shows final results if poll is closed.
+    Uses multi-layer check (User, permanent voter token cookie, and session key).
     """
     polls = Poll.objects.prefetch_related('options', 'author').all()
     poll_form = PollCreateForm() if request.user.is_authenticated else None
+    voter_token, is_new_cookie = get_or_create_voter_token(request)
+    session_key = request.session.session_key
 
-    # Determine user's existing votes (poll_id -> option_id)
-    user_votes = {}
+    # Multi-layer lookup for existing votes
     if request.user.is_authenticated:
-        logs = VoteLog.objects.filter(user=request.user).values_list('poll_id', 'option_id')
-        user_votes = dict(logs)
-    elif request.session.session_key:
-        logs = VoteLog.objects.filter(session_key=request.session.session_key).values_list('poll_id', 'option_id')
-        user_votes = dict(logs)
+        q = Q(user=request.user)
+        if voter_token:
+            q |= Q(voter_token=voter_token)
+        logs = VoteLog.objects.filter(q).values_list('poll_id', 'option_id')
+    else:
+        q = Q()
+        if voter_token:
+            q |= Q(voter_token=voter_token)
+        if session_key:
+            q |= Q(session_key=session_key)
+        logs = VoteLog.objects.filter(q).values_list('poll_id', 'option_id') if q else []
+
+    user_votes = dict(logs)
 
     # Prepare poll items with vote state and percentages
     poll_data = []
@@ -67,13 +111,17 @@ def index_view(request):
         'poll_data': poll_data,
         'poll_form': poll_form,
     }
-    return render(request, 'core/index.html', context)
+    response = render(request, 'core/index.html', context)
+    if is_new_cookie:
+        response.set_cookie(COOKIE_VOTER_TOKEN_NAME, voter_token, max_age=COOKIE_MAX_AGE, samesite='Lax')
+    return response
 
 
 def register_view(request):
     """
     User registration view.
     Ensures username, email, and password are provided.
+    Migrates previous anonymous votes to user account upon registration.
     """
     if request.user.is_authenticated:
         return redirect('index')
@@ -82,6 +130,7 @@ def register_view(request):
         form = RegisterForm(request.POST)
         if form.is_valid():
             user = form.save()
+            migrate_anonymous_votes(request, user)
             login(request, user)
             messages.success(request, f'Hoş geldin @{user.username}! Hesabın başarıyla oluşturuldu.')
             return redirect('index')
@@ -96,6 +145,7 @@ def register_view(request):
 def login_view(request):
     """
     User login view.
+    Migrates previous anonymous votes to user account upon login.
     """
     if request.user.is_authenticated:
         return redirect('index')
@@ -104,6 +154,7 @@ def login_view(request):
         form = LoginForm(request, data=request.POST)
         if form.is_valid():
             user = form.get_user()
+            migrate_anonymous_votes(request, user)
             login(request, user)
             messages.success(request, f'Tekrar hoş geldin @{user.username}!')
             next_url = request.GET.get('next') or 'index'
@@ -169,7 +220,7 @@ def poll_create_view(request):
             poll.author = request.user
 
             # Calculate expiration time based on duration choice
-            duration = request.POST.get('duration', '24h')
+            duration = request.POST.get('duration') or '24h'
             now = timezone.now()
             if duration == '1h':
                 poll.expires_at = now + timedelta(hours=1)
@@ -224,9 +275,13 @@ def poll_create_view(request):
 def poll_vote_api(request, poll_id):
     """
     JSON voting endpoint for both members and anonymous visitors.
-    Prevents duplicate votes and blocks voting if poll is closed.
+    Prevents duplicate votes across sessions, logins, and logouts using:
+    - request.user (for authenticated members)
+    - voter_token (permanent browser cookie)
+    - session_key (Django session)
     """
     poll = get_object_or_404(Poll, id=poll_id)
+    voter_token, is_new_cookie = get_or_create_voter_token(request)
 
     # Check if poll is closed
     if poll.is_closed:
@@ -256,18 +311,21 @@ def poll_vote_api(request, poll_id):
 
     # Identify voter
     user = request.user if request.user.is_authenticated else None
-    session_key = None
-
-    if not user:
-        if not request.session.session_key:
-            request.session.save()
+    session_key = request.session.session_key
+    if not session_key:
+        request.session.save()
         session_key = request.session.session_key
 
-    # Check for duplicate vote
+    # Check for duplicate vote using all available identifiers
     if user:
-        already_voted = VoteLog.objects.filter(poll=poll, user=user).exists()
+        already_voted = VoteLog.objects.filter(poll=poll).filter(
+            Q(user=user) | Q(voter_token=voter_token)
+        ).exists()
     else:
-        already_voted = VoteLog.objects.filter(poll=poll, session_key=session_key).exists()
+        q = Q(voter_token=voter_token)
+        if session_key:
+            q |= Q(session_key=session_key)
+        already_voted = VoteLog.objects.filter(poll=poll).filter(q).exists()
 
     if already_voted:
         return JsonResponse({
@@ -275,14 +333,15 @@ def poll_vote_api(request, poll_id):
             'error': 'Bu ankete zaten oy kullandınız.'
         }, status=400)
 
-    # Atomically increment vote count and log the vote
+    # Atomically increment vote count and log the vote with user, session_key, and voter_token!
     with transaction.atomic():
         Option.objects.filter(id=option.id).update(vote_count=F('vote_count') + 1)
         VoteLog.objects.create(
             poll=poll,
             option=option,
             user=user,
-            session_key=session_key
+            session_key=session_key,
+            voter_token=voter_token
         )
 
     # Refresh options to return updated percentages and counts
@@ -299,7 +358,7 @@ def poll_vote_api(request, poll_id):
             'is_selected': (opt.id == option.id),
         })
 
-    return JsonResponse({
+    response = JsonResponse({
         'success': True,
         'message': 'Oyunuz başarıyla kaydedildi!',
         'poll_id': poll.id,
@@ -307,6 +366,8 @@ def poll_vote_api(request, poll_id):
         'user_voted_option_id': option.id,
         'options': options_data,
     })
+    response.set_cookie(COOKIE_VOTER_TOKEN_NAME, voter_token, max_age=COOKIE_MAX_AGE, samesite='Lax')
+    return response
 
 
 @login_required

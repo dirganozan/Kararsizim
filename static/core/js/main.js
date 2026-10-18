@@ -264,6 +264,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 5000);
     });
 
+    // 1.1 LocalStorage Client-Side Guard (Sync past votes from this browser)
+    document.querySelectorAll('.poll-card').forEach(card => {
+        const pollId = card.dataset.pollId;
+        if (!pollId) return;
+        const votedOptionId = localStorage.getItem(`krarsizim_voted_${pollId}`);
+        if (votedOptionId) {
+            const buttons = card.querySelectorAll('.poll-option-btn');
+            if (buttons.length > 0) {
+                buttons.forEach(b => {
+                    if (b.dataset.optionId == votedOptionId) {
+                        b.style.borderColor = 'var(--primary)';
+                        b.style.background = 'var(--primary-light)';
+                        const ind = b.querySelector('.vote-indicator');
+                        if (ind) ind.textContent = '✓';
+                    }
+                    b.disabled = true;
+                    b.style.opacity = '0.75';
+                    b.title = 'Bu cihazdan daha önce oy kullandınız.';
+                });
+                const statusBadge = document.getElementById(`poll-status-${pollId}`);
+                if (statusBadge) {
+                    statusBadge.textContent = '✅ Önceden oy kullanıldı';
+                    statusBadge.style.color = 'var(--accent-green)';
+                }
+            }
+        }
+    });
+
     // 2. Modal Management
     const modal = document.getElementById('createPollModal');
     const openBtn = document.getElementById('openCreatePollModalBtn');

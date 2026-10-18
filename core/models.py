@@ -118,7 +118,8 @@ class Option(models.Model):
 class VoteLog(models.Model):
     """
     Log of votes to prevent duplicate votes by members or anonymous visitors.
-    Tracks which option was selected as agreed in Phase 1 plan.
+    Tracks which option was selected.
+    Uses voter_token (persistent cookie) and session_key for rock-solid anonymous tracking.
     """
     poll = models.ForeignKey(
         Poll,
@@ -143,6 +144,7 @@ class VoteLog(models.Model):
         verbose_name='Kullanıcı'
     )
     session_key = models.CharField('Oturum Anahtarı (Anonim)', max_length=40, null=True, blank=True)
+    voter_token = models.CharField('Tarayıcı/Cihaz Belirteci', max_length=64, null=True, blank=True, db_index=True)
     created_at = models.DateTimeField('Oy Tarihi', auto_now_add=True)
 
     class Meta:
@@ -151,8 +153,9 @@ class VoteLog(models.Model):
         indexes = [
             models.Index(fields=['poll', 'user']),
             models.Index(fields=['poll', 'session_key']),
+            models.Index(fields=['poll', 'voter_token']),
         ]
 
     def __str__(self):
-        voter = f"@{self.user.username}" if self.user else f"Anonim ({self.session_key})"
+        voter = f"@{self.user.username}" if self.user else f"Anonim ({self.voter_token or self.session_key})"
         return f"{voter} voted on Poll #{self.poll_id}"

@@ -455,3 +455,56 @@ class PollExpirationAndAuthorActionsTest(TestCase):
         response = self.client.post(url, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
         self.assertEqual(response.status_code, 403)
         self.assertTrue(Poll.objects.filter(id=self.poll.id).exists())
+
+    def test_anonymous_vote_persists_across_signup_and_logout(self):
+        # 1. Anonymous visitor visits site and votes
+        guest_client = Client()
+        vote_url = reverse('poll_vote_api', kwargs={'poll_id': self.poll.id})
+        vote_resp = guest_client.post(
+            vote_url,
+            data=json.dumps({'option_id': self.opt1.id}),
+            content_type='application/json'
+        )
+        self.assertEqual(vote_resp.status_code, 200)
+        self.assertEqual(self.opt1.poll.total_votes, 1)
+
+        # Ensure voter token cookie was set
+        self.assertIn('krarsizim_voter_token', guest_client.cookies)
+        voter_token = guest_client.cookies['krarsizim_voter_token'].value
+
+        # 2. Anonymous visitor registers an account
+        reg_resp = guest_client.post(reverse('register'), {
+            'username': 'converted_user',
+            'email': 'converted@example.com',
+            'password1': 'mypassword123',
+            'password2': 'mypassword123',
+        }, follow=True)
+        self.assertEqual(reg_resp.status_code, 200)
+
+        # Check VoteLog was migrated to converted_user
+        converted_user = User.objects.get(username='converted_user')
+        log = VoteLog.objects.get(poll=self.poll)
+        self.assertEqual(log.user, converted_user)
+        self.assertEqual(log.voter_token, voter_token)
+
+        # 3. User logs out
+        logout_resp = guest_client.get(reverse('logout'), follow=True)
+        self.assertEqual(logout_resp.status_code, 200)
+        self.assertFalse(logout_resp.context['user'].is_authenticated)
+
+        # 4. Same client (now logged out) tries to vote AGAIN on the same poll
+        duplicate_vote_resp = guest_client.post(
+            vote_url,
+            data=json.dumps({'option_id': self.opt2.id}),
+            content_type='application/json'
+        )
+        self.assertEqual(duplicate_vote_resp.status_code, 400)
+        data = duplicate_vote_resp.json()
+        self.assertFalse(data.get('success'))
+        self.assertIn('zaten oy kullandınız', data.get('error'))
+
+        # Total votes must remain 1
+        self.opt1.refresh_from_db()
+        self.opt2.refresh_from_db()
+        self.assertEqual(self.opt1.vote_count, 1)
+        self.assertEqual(self.opt2.vote_count, 0)
