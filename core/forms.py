@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
-from .models import User
+from .models import User, Poll
 
 
 class RegisterForm(UserCreationForm):
@@ -65,3 +65,32 @@ class LoginForm(AuthenticationForm):
             'autocomplete': 'current-password'
         })
     )
+
+
+class PollCreateForm(forms.ModelForm):
+    question = forms.CharField(
+        label='Kararsız kaldığın soru nedir?',
+        max_length=255,
+        min_length=5,
+        widget=forms.TextInput(attrs={
+            'class': 'form-input',
+            'placeholder': 'Örn: Bugün sinemaya mı gitsem yoksa restorana mı?',
+            'autocomplete': 'off',
+            'autofocus': True
+        }),
+        error_messages={
+            'required': 'Lütfen kararsız kaldığınız soruyu yazın.',
+            'min_length': 'Soru metni en az 5 karakter olmalıdır.',
+            'max_length': 'Soru metni en fazla 255 karakter olabilir.'
+        }
+    )
+
+    class Meta:
+        model = Poll
+        fields = ('question',)
+
+    def clean_question(self):
+        question = self.cleaned_data.get('question', '').strip()
+        if len(question) < 5:
+            raise forms.ValidationError('Soru metni en az 5 karakter olmalıdır.')
+        return question

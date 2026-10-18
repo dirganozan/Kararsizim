@@ -16,16 +16,9 @@
 
     <div class="hero-actions">
         {% if user.is_authenticated %}
-            <div class="phase-card" style="width: 100%; text-align: center;">
-                <div style="font-size: 2.2rem; margin-bottom: 8px;">🎉</div>
-                <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 6px;">
-                    Hoş geldin, @{{ user.username }}!
-                </h3>
-                <p style="color: var(--text-muted); font-size: 0.95rem;">
-                    <strong>Faz 1 (Kullanıcı Sistemi ve Altyapı)</strong> başarıyla çalışıyor.<br>
-                    Sırada <strong>Faz 2: Anket Oluşturma ve Veritabanı Modelleri</strong> var!
-                </p>
-            </div>
+            <button type="button" class="btn btn-primary" onclick="document.getElementById('openCreatePollModalBtn').click();" style="padding: 12px 28px; font-size: 1rem;">
+                ➕ Yeni Anket Başlat
+            </button>
         {% else %}
             <a href="{% url 'register' %}" class="btn btn-primary" style="padding: 12px 28px; font-size: 1rem;">
                 🚀 Hemen Ücretsiz Katıl
@@ -35,17 +28,71 @@
             </a>
         {% endif %}
     </div>
+</section>
 
-    <div class="phase-card">
-        <div class="phase-card-title">
-            <span>📋</span> Proje Geliştirme Durumu
-        </div>
-        <ul style="list-style: none; padding-left: 0; font-size: 0.925rem; color: var(--text-muted); line-height: 2;">
-            <li>✅ <strong>Faz 1:</strong> Django Proje İskeleti, Custom User Modeli, Supabase/SQLite Altyapısı ve Kimlik Doğrulama</li>
-            <li>⏳ <strong>Faz 2:</strong> Poll, Option, VoteLog Modelleri ve Anket Oluşturma Ekranı (2-5 Seçenek Doğrulaması)</li>
-            <li>⏳ <strong>Faz 3:</strong> Ana Sayfa Canlı Akış, Anonim/Üye Oylama ve Dinamik Progress Bar</li>
-            <li>⏳ <strong>Faz 4:</strong> UI/UX İyileştirmeleri ve Vercel Deployment</li>
-        </ul>
+<!-- ANKET AKIŞI (POLL FEED) -->
+<section class="poll-feed">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <h2 style="font-size: 1.35rem; font-weight: 800; color: var(--text-main);">
+            🔥 Güncel Anketler
+        </h2>
+        <span style="font-size: 0.875rem; color: var(--text-muted); font-weight: 600;">
+            {{ polls|length }} Anket
+        </span>
     </div>
+
+    {% if polls %}
+        {% for poll in polls %}
+            <article class="poll-card" id="poll-card-{{ poll.id }}">
+                <div class="poll-meta">
+                    <span class="poll-author">
+                        <span class="user-avatar" style="width: 22px; height: 22px; font-size: 0.7rem;">
+                            {{ poll.author.username|make_list|first|upper }}
+                        </span>
+                        @{{ poll.author.username }}
+                    </span>
+                    <span class="poll-date">{{ poll.created_at|timesince }} önce</span>
+                </div>
+
+                <h3 class="poll-question">{{ poll.question }}</h3>
+
+                <div class="poll-options">
+                    {% for option in poll.options.all %}
+                        <div class="poll-option-btn">
+                            <span>{{ option.text }}</span>
+                            <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 700;">
+                                {{ option.vote_count }} oy
+                            </span>
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; font-size: 0.825rem; color: var(--text-muted);">
+                    <span>🗳️ Toplam <strong>{{ poll.total_votes }}</strong> oy</span>
+                    <span style="color: var(--primary); font-weight: 600;">Faz 3'te canlı oylama aktifleşecek ⚡</span>
+                </div>
+            </article>
+        {% endfor %}
+    {% else %}
+        <!-- BOŞ DURUM (EMPTY STATE) -->
+        <div class="phase-card" style="text-align: center; padding: 48px 24px;">
+            <div style="font-size: 3rem; margin-bottom: 12px;">🎈</div>
+            <h3 style="font-size: 1.3rem; font-weight: 800; margin-bottom: 8px; color: var(--text-main);">
+                Henüz hiç anket oluşturulmamış!
+            </h3>
+            <p style="color: var(--text-muted); font-size: 0.95rem; max-width: 420px; margin: 0 auto 20px;">
+                İlk kararsız kalan sen ol! Aklındaki soruyu topluluğa sorarak karar verme serüvenini başlat.
+            </p>
+            {% if user.is_authenticated %}
+                <button type="button" class="btn btn-primary" onclick="document.getElementById('openCreatePollModalBtn').click();">
+                    ➕ İlk Anketi Sen Başlat
+                </button>
+            {% else %}
+                <a href="{% url 'register' %}" class="btn btn-primary">
+                    Hemen Katıl ve Anket Aç
+                </a>
+            {% endif %}
+        </div>
+    {% endif %}
 </section>
 {% endblock %}

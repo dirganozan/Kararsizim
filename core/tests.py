@@ -1,6 +1,7 @@
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth import get_user_model
+from core.models import Poll, Option, VoteLog
 
 User = get_user_model()
 
@@ -80,3 +81,119 @@ class AuthViewsTest(TestCase):
         response = self.client.get(reverse('logout'), follow=True)
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context['user'].is_authenticated)
+
+
+class PollModelsTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='pollauthor',
+            email='author@example.com',
+            password='authorpass123'
+        )
+        self.poll = Poll.objects.create(
+            author=self.user,
+            question='Hangi kahveyi içmeliyim?'
+        )
+        self.opt1 = Option.objects.create(poll=self.poll, text='Espresso', vote_count=3)
+        self.opt2 = Option.objects.create(poll=self.poll, text='Latte', vote_count=7)
+
+    def test_poll_and_options_creation(self):
+        self.assertEqual(self.poll.question, 'Hangi kahveyi içmeliyim?')
+        self.assertEqual(self.poll.author, self.user)
+        self.assertEqual(self.poll.options.count(), 2)
+        self.assertEqual(self.poll.total_votes, 10)
+
+    def test_option_percentage(self):
+        self.assertEqual(self.opt1.get_percentage(), 30.0)
+        self.assertEqual(self.opt2.get_percentage(), 70.0)
+
+    def test_votelog_creation(self):
+        votelog = VoteLog.objects.create(
+            poll=self.poll,
+            option=self.opt1,
+            user=self.user,
+            session_key='session_xyz'
+        )
+        self.assertEqual(votelog.poll, self.poll)
+        self.assertEqual(votelog.option, self.opt1)
+        self.assertEqual(votelog.user, self.user)
+        self.assertEqual(votelog.session_key, 'session_xyz')
+
+
+class PollCreateViewTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username='creator',
+            email='creator@example.com',
+            password='creatorpass123'
+        )
+
+    def test_poll_create_requires_login(self):
+        response = self.client.get(reverse('poll_create'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+
+    def test_poll_create_get_authenticated(self):
+        self.client.login(username='creator', password='creatorpass123')
+        response = self.client.get(reverse('poll_create'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Yeni Anket Oluştur')
+
+    def test_poll_create_success_with_two_options(self):
+        self.client.login(username='creator', password='creatorpass123')
+        response = self.client.post(reverse('poll_create'), {
+            'question': 'Sinemaya mı gitsem tiyatroya mı?',
+            'options': ['Sinema', 'Tiyatro']
+        }, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Poll.objects.filter(question='Sinemaya mı gitsem tiyatroya mı?').exists())
+        poll = Poll.objects.get(question='Sinemaya mı gitsem tiyatroya mı?')
+        self.assertEqual(poll.author, self.user)
+        self.assertEqual(poll.options.count(), 2)
+        self.assertEqual(set(poll.options.values_list('text', flat=True)), {'Sinema', 'Tiyatro'})
+
+    def test_poll_create_success_with_five_options(self):
+        self.client.login(username='creator', password='creatorpass123')
+        options = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma']
+        response = self.client.post(reverse('poll_create'), {
+            'question': 'Buluşma için en uygun gün hangisi?',
+            'options': options
+        }, follow=True)
+        self.assertEqual(response.status_code, 200)
+        poll = Poll.objects.get(question='Buluşma için en uygun gün hangisi?')
+        self.assertEqual(poll.options.count(), 5)
+
+    def test_poll_create_fails_with_one_option(self):
+        self.client.login(username='creator', password='creatorpass123')
+        response = self.client.post(reverse('poll_create'), {
+            'question': 'Tek seçenekli geçersiz anket sorusu?',
+            'options': ['Yalnızca Bir']
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Poll.objects.filter(question='Tek seçenekli geçersiz anket sorusu?').exists())
+
+    def test_poll_create_fails_with_six_options(self):
+        self.client.login(username='creator', password='creatorpass123')
+        options = ['Opt1', 'Opt2', 'Opt3', 'Opt4', 'Opt5', 'Opt6']
+        response = self.client.post(reverse('poll_create'), {
+            'question': 'Altı seçenekli geçersiz anket?',
+            'options': options
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Poll.objects.filter(question='Altı seçenekli geçersiz anket?').exists())
+
+    def test_poll_create_ajax_success(self):
+        self.client.login(username='creator', password='creatorpass123')
+        response = self.client.post(
+            reverse('poll_create'),
+            {
+                'question': 'AJAX ile oluşturulan anket sorusu?',
+                'options': ['Seçenek A', 'Seçenek B', 'Seçenek C']
+            },
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest'
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data.get('success'))
+        self.assertIn('poll_id', data)

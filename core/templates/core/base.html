@@ -27,6 +27,9 @@
 
             <nav class="nav-links">
                 {% if user.is_authenticated %}
+                    <button type="button" class="btn btn-primary" id="openCreatePollModalBtn" style="padding: 8px 16px; font-size: 0.875rem;">
+                        <span>➕</span> Yeni Anket
+                    </button>
                     <div class="user-chip" title="Giriş yapıldı">
                         <span class="user-avatar">{{ user.username|make_list|first|upper }}</span>
                         <span class="username-text">@{{ user.username }}</span>
@@ -69,6 +72,64 @@
             {% endblock %}
         </div>
     </main>
+
+    <!-- ANKET OLUŞTURMA MODALI (Giriş Yapmış Kullanıcılar İçin) -->
+    {% if user.is_authenticated %}
+    <div id="createPollModal" class="modal-backdrop" aria-hidden="true">
+        <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+            <div class="modal-header">
+                <h2 id="modalTitle" class="modal-title">🤔 Yeni Anket Oluştur</h2>
+                <button type="button" class="btn-close-modal" id="closeCreatePollModalBtn" aria-label="Kapat">✕</button>
+            </div>
+            
+            <form method="post" action="{% url 'poll_create' %}" id="modalPollForm" class="poll-form" novalidate>
+                {% csrf_token %}
+                <div id="modalFormErrors" class="alert alert-error" style="display: none; margin-bottom: 16px;"></div>
+
+                <div class="form-group">
+                    <label for="modalQuestionInput" class="form-label">
+                        Kararsız kaldığın soru nedir? <span style="color: var(--secondary);">*</span>
+                    </label>
+                    <input type="text" name="question" id="modalQuestionInput" class="form-input" placeholder="Örn: Bugün sinemaya mı gitsem yoksa restorana mı?" required maxlength="255" autocomplete="off">
+                </div>
+
+                <div class="form-group" style="margin-top: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <label class="form-label" style="margin-bottom: 0;">Seçenekler <span style="color: var(--secondary);">*</span></label>
+                        <span id="modalOptionsCount" class="badge-count">2 / 5 Seçenek</span>
+                    </div>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px;">
+                        En az 2, en fazla 5 seçenek ekleyebilirsin.
+                    </p>
+
+                    <div id="modalOptionsContainer" class="options-container">
+                        <div class="option-row">
+                            <span class="option-number">1</span>
+                            <input type="text" name="options" class="form-input option-input" placeholder="1. Seçenek" maxlength="120" required>
+                            <button type="button" class="btn-remove-option" title="Seçeneği kaldır" disabled aria-label="Seçeneği kaldır">✕</button>
+                        </div>
+                        <div class="option-row">
+                            <span class="option-number">2</span>
+                            <input type="text" name="options" class="form-input option-input" placeholder="2. Seçenek" maxlength="120" required>
+                            <button type="button" class="btn-remove-option" title="Seçeneği kaldır" disabled aria-label="Seçeneği kaldır">✕</button>
+                        </div>
+                    </div>
+
+                    <button type="button" id="modalAddOptionBtn" class="btn btn-outline" style="width: 100%; margin-top: 10px; border-style: dashed; padding: 9px;">
+                        <span>➕</span> Yeni Seçenek Ekle
+                    </button>
+                </div>
+
+                <div class="modal-footer" style="margin-top: 24px; display: flex; gap: 12px;">
+                    <button type="button" class="btn btn-outline" id="cancelModalBtn" style="flex: 1;">Vazgeç</button>
+                    <button type="submit" id="submitModalBtn" class="btn btn-primary" style="flex: 2;">
+                        🚀 Anketi Yayınla
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- FOOTER -->
     <footer class="footer">
