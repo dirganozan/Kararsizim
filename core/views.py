@@ -7,7 +7,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.views.decorators.http import require_POST
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.db.models import F, Q
 from django.utils import timezone
 from .models import Poll, Option, VoteLog
@@ -120,11 +120,25 @@ def register_view(request):
     if request.method == 'POST':
         form = RegisterForm(request.POST)
         if form.is_valid():
-            user = form.save()
-            migrate_anonymous_votes(request, user)
-            login(request, user)
-            messages.success(request, f'Hoş geldin @{user.username}! Hesabın başarıyla oluşturuldu.')
-            return redirect('index')
+            try:
+                user = form.save()
+                migrate_anonymous_votes(request, user)
+                login(request, user)
+                messages.success(request, f'Hoş geldin @{user.username}! Hesabın başarıyla oluşturuldu.')
+                return redirect('index')
+            except IntegrityError:
+                # Concurrent submission / race condition handling (e.g. mobile rapid double-click)
+                username = form.cleaned_data.get('username')
+                password = form.cleaned_data.get('password1')
+                user = authenticate(request, username=username, password=password)
+                if user is not None:
+                    migrate_anonymous_votes(request, user)
+                    login(request, user)
+                    messages.success(request, f'Hoş geldin @{user.username}! Hesabın başarıyla oluşturuldu.')
+                    return redirect('index')
+                else:
+                    form.add_error('username', 'Bu kullanıcı adı veya e-posta adresi zaten kullanımda.')
+                    messages.error(request, 'Bu kullanıcı adı veya e-posta adresi zaten kullanımda.')
         else:
             messages.error(request, 'Lütfen formdaki hataları düzeltin.')
     else:

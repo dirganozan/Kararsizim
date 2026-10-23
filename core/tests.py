@@ -61,6 +61,36 @@ class AuthViewsTest(TestCase):
         self.assertFalse(User.objects.filter(username='anotheruser').exists())
         self.assertFormError(response.context['form'], 'email', 'Bu e-posta adresi ile zaten kayıtlı bir hesap var.')
 
+    def test_register_duplicate_username(self):
+        response = self.client.post(reverse('register'), {
+            'username': 'existinguser',
+            'email': 'uniquemail@example.com',
+            'password1': 'supersecretpass123',
+            'password2': 'supersecretpass123',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertFormError(response.context['form'], 'username', 'Bu kullanıcı adında bir kullanıcı zaten mevcut.')
+
+    def test_register_integrity_error_handles_race_condition(self):
+        from unittest.mock import patch
+        from django.db import IntegrityError
+
+        # Simulate race condition: form.is_valid passes, but concurrently created user raises IntegrityError during save
+        def fake_save(self_form):
+            User.objects.create_user(username='concurrentuser', email='concurrent@example.com', password='validpassword123')
+            raise IntegrityError('duplicate key value violates unique constraint')
+
+        with patch('core.forms.RegisterForm.save', side_effect=fake_save, autospec=True):
+            response = self.client.post(reverse('register'), {
+                'username': 'concurrentuser',
+                'email': 'concurrent@example.com',
+                'password1': 'validpassword123',
+                'password2': 'validpassword123',
+            }, follow=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.context['user'].is_authenticated)
+            self.assertEqual(response.context['user'].username, 'concurrentuser')
+
     def test_login_success(self):
         response = self.client.post(reverse('login'), {
             'username': 'existinguser',

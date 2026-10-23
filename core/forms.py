@@ -40,6 +40,14 @@ class RegisterForm(UserCreationForm):
                 'autocomplete': 'new-password'
             })
 
+    def clean_username(self):
+        username = self.cleaned_data.get('username', '').strip()
+        if not username:
+            raise forms.ValidationError('Kullanıcı adı boş bırakılamaz.')
+        if User.objects.filter(username__iexact=username).exists():
+            raise forms.ValidationError('Bu kullanıcı adında bir kullanıcı zaten mevcut.')
+        return username
+
     def clean_email(self):
         email = self.cleaned_data.get('email', '').strip().lower()
         if User.objects.filter(email__iexact=email).exists():

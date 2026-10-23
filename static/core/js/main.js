@@ -477,3 +477,26 @@ async function handleDeletePoll(pollId) {
         showToast('Bağlantı hatası oluştu.', 'error');
     }
 }
+
+// Global Double-Submit Prevention for Standard Forms (e.g. Register, Login)
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('form[method="post"]:not([data-ajax="true"])').forEach(form => {
+        form.addEventListener('submit', (e) => {
+            if (form.dataset.submitting === 'true') {
+                e.preventDefault();
+                return false;
+            }
+            form.dataset.submitting = 'true';
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                // Disable button slightly after submit event to allow form dispatch
+                setTimeout(() => {
+                    submitBtn.disabled = true;
+                    submitBtn.style.opacity = '0.75';
+                    submitBtn.style.cursor = 'wait';
+                    submitBtn.innerHTML = '<span>⏳ Lütfen bekleyin...</span>';
+                }, 10);
+            }
+        });
+    });
+});
