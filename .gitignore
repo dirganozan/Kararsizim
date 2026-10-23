@@ -37,9 +37,13 @@ db.sqlite3
 db.sqlite3-journal
 media/
 staticfiles/
+staticfiles_build/
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *~
+
+.vercel
+.env*
