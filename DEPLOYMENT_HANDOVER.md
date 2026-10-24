@@ -1,28 +1,30 @@
 # 📋 Krarsızım - Vercel Dağıtımı & Proje Durumu El Kitabı (Handover)
 
-Bu doküman, yeni oturumda doğrudan **Vercel Dağıtımı (Deployment)** adımından başlanabilmesi için mevcut sistem durumunu, tamamlanan geliştirmeleri ve canlıya alma adımlarını özetler.
+Bu doküman, Krarsızım projesinin **Vercel Dağıtımı (Deployment)** sürecini, canlı ortam mimarisini, yapılandırma ayrıntılarını ve erişim adreslerini özetler.
 
 ---
 
-## 🚀 1. Mevcut Proje Durumu
-- **Durum:** Geliştirme (Faz 1-4) ve ek özellikler (anket kapatma, silme, süre kısıtı, anonim oy göçü ve çoklu kullanıcı oy izolasyonu) **%100 tamamlandı**.
-- **Testler:** 35 birim testinin (`python manage.py test`) tamamı **geçti** (`OK`).
-- **Canlı Mod Testi (`DEBUG=False`):** WhiteNoise entegrasyonu, manifest üretimi (`collectstatic`) ve statik varlık sunumu yerel ortamda `DEBUG=False` ile test edildi ve doğrulandı.
-- **Git Durumu:** `origin/main` dalı tamamen güncel ve temiz (`clean working tree`).
+## 🚀 1. Canlı Dağıtım Durumu (Canlıda & Aktif)
+- **Canlı Üretim URL (Production):** [https://kararsizim-bay.vercel.app](https://kararsizim-bay.vercel.app)
+- **Vercel Proje Adı:** `kararsizim` (`dirgan/kararsizim`)
+- **Proje ID:** `prj_Yx9nO8XIDV899BEhEcYyoLwn769r`
+- **Dağıtım Durumu:** `READY` (HTTP 200 OK)
+- **Erişim Koruması:** Herkese açık (SSO Deployment Protection devre dışı bırakıldı)
+- **Testler:** 35 birim testinin tamamı başarıyla geçmektedir (`OK`).
 - **Uzak Depo (GitHub):** [https://github.com/dirganozan/Kararsizim.git](https://github.com/dirganozan/Kararsizim.git)
 
 ---
 
 ## 🛠️ 2. Teknoloji Yığını & Mimari
 - **Backend:** Python 3.12, Django 6.1.2
-- **Veritabanı:** Supabase PostgreSQL (`postgresql://...` connection pooling)
-- **Frontend:** HTML5, Modern Vanilla JS (ES6+), CSS3 Variables, Responsive Flex/Grid
-- **Statik Dosya Sunumu:** WhiteNoise (`whitenoise.storage.CompressedManifestStaticFilesStorage`)
-- **Canlı Sunucu / WSGI:** Vercel Python Serverless Runtime (`krarsizim_project/wsgi.py` -> `app = application`)
+- **Veritabanı:** Supabase PostgreSQL (IPv4 Transaction Pooler, Port: 6543, Bölge: `eu-west-1`)
+- **Frontend:** HTML5, Modern Vanilla JS (ES6+), CSS3 Değişkenleri, Responsive Tasarım
+- **Statik Dosyalar (CDN):** Vercel Edge CDN (`staticfiles_build/static`) + WhiteNoise yedeklemesi
+- **Sunucusuz Çalışma Zamanı (WSGI):** `@vercel/python` (Python 3.12, `krarsizim_project/wsgi.py` -> `app = application`)
 
 ---
 
-## 📦 3. Dağıtım Konfigürasyon Dosyaları (Hazır)
+## 📦 3. Dağıtım Dosyaları & Konfigürasyon
 1. **`vercel.json`:**
    ```json
    {
@@ -31,12 +33,17 @@ Bu doküman, yeni oturumda doğrudan **Vercel Dağıtımı (Deployment)** adım�
        {
          "src": "krarsizim_project/wsgi.py",
          "use": "@vercel/python",
-         "config": { "maxLambdaSize": "15mb", "runtime": "python3.12" }
+         "config": {
+           "maxLambdaSize": "15mb",
+           "runtime": "python3.12"
+         }
        },
        {
          "src": "build_files.sh",
          "use": "@vercel/static-build",
-         "config": { "distDir": "staticfiles" }
+         "config": {
+           "distDir": "staticfiles_build"
+         }
        }
      ],
      "routes": [
@@ -53,35 +60,33 @@ Bu doküman, yeni oturumda doğrudan **Vercel Dağıtımı (Deployment)** adım�
    ```
 2. **`build_files.sh`:**
    ```bash
-   python3.12 -m pip install -r requirements.txt
-   python3.12 manage.py collectstatic --noinput --clear
+   #!/bin/bash
+   echo "--> Bağımlılıklar yükleniyor..."
+   python3 -m pip install -r requirements.txt
+   echo "--> Statik dosyalar derleniyor (collectstatic)..."
+   python3 manage.py collectstatic --noinput --clear
+   echo "--> Build başarıyla tamamlandı!"
    ```
-3. **`krarsizim_project/wsgi.py`:**
-   `app = application` değişkeni Vercel sunucusuz fonksiyonları için tanımlandı.
-4. **`requirements.txt`:**
-   Gerekli tüm kütüphaneler (`Django`, `dj-database-url`, `psycopg2-binary`, `whitenoise`, `python-dotenv`) kilitlendi.
+3. **`krarsizim_project/settings.py`:**
+   - `STATIC_ROOT = BASE_DIR / 'staticfiles_build' / 'static'`
+   - `STATIC_URL = '/static/'`
+   - `WHITENOISE_MANIFEST_STRICT = False`
 
 ---
 
-## 🔑 4. Vercel'e Eklenecek Ortam Değişkenleri (Environment Variables)
-Yeni oturumda Vercel Dashboard üzerinden projeyi import ederken aşağıdaki değişkenler tanımlanmalıdır:
+## 🔑 4. Vercel Ortam Değişkenleri (Tanımlandı & Aktif)
 
-| Değişken Adı | Değer / Açıklama |
+| Değişken Adı | Değer / Amaç |
 | :--- | :--- |
-| `SECRET_KEY` | Güçlü rastgele Django üretim anahtarı |
+| `SECRET_KEY` | Üretim için güvenli rastgele 50 karakterlik Django anahtarı |
 | `DEBUG` | `False` |
 | `ALLOWED_HOSTS` | `.vercel.app,127.0.0.1,localhost` |
-| `DATABASE_URL` | Supabase Transaction Pooler URL (`postgresql://postgres.[ref]:[pass]@aws-0-[region].pooler.supabase.com:6543/postgres`) |
+| `DATABASE_URL` | `postgresql://postgres.isgskfkgufccalihrzbl:[SUPABASE_PASSWORD]@aws-0-eu-west-1.pooler.supabase.com:6543/postgres` |
 | `CSRF_TRUSTED_ORIGINS` | `https://*.vercel.app` |
 
 ---
 
-## 📋 5. Yeni Session İçin Başlama Adımları (Next Steps)
-Yeni oturumu açtığınızda asistana şu mesajı vermeniz yeterlidir:
-> *"Kararsizim projesini Vercel'e deploy edeceğiz. Kodlar GitHub'da hazır. Vercel CLI veya GitHub Dashboard entegrasyonu ile canlıya alma sürecini başlatalım."*
-
-Yeni oturumda yapılacaklar:
-1. Vercel hesabı ile GitHub reposunun (`dirganozan/Kararsizim`) bağlanması.
-2. Ortam değişkenlerinin Vercel'e girilmesi.
-3. Build & Deploy tetiklenmesi.
-4. Canlı URL üzerinden Supabase bağlantısı ve statik dosyaların son testi.
+## 🔍 5. Doğrulama ve Test Sonuçları
+- **Ana Sayfa:** HTTP 200 OK (Mevcut anketler ve oy sayıları Supabase üzerinden dinamik olarak başarıyla render edildi).
+- **Statik CSS & JS:** Vercel CDN üzerinden HTTP 200 OK ile doğru MIME tipleriyle (`text/css`, `application/javascript`) sunuluyor.
+- **Kimlik Doğrulama Sayfaları:** `/login/` ve `/register/` sayfaları sorunsuz çalışmaktadır.
